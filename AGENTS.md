@@ -59,7 +59,8 @@ just check      # markdownlint + gradle (phase exception until wrapper lands)
 just lint-md
 ```
 
-A gate that cannot run fails loudly. Missing tooling is installed, not skipped.
+A gate that cannot run fails loudly. A missing or broken tool runs from the pinned
+container (`just <tool>-docker`) instead of being installed system-wide or skipped.
 
 ## CarryCtx
 
