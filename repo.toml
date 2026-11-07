@@ -1,0 +1,16 @@
+# mixu-graph: workspace identity descriptor (mirrors workspace.toml).
+[repo]
+name = "mixu-graph"
+kind = "core"
+lang = "kotlin"
+role = "temporal narrative graph: model, projection, queries"
+visibility = "public"
+owner = "mixu-core"
+docs = "mixu-docs"
+
+[contracts.provides]
+graph-model = "src/main/kotlin/.../model"            # Entity/Assertion/Event/RevealAnchor
+
+[contracts.consumes]
+graph-pack-schema = "mixu-contracts: schemas/graph/*.schema.json"
+spoiler-corpus = "mixu-fixtures: fixtures/synthetic"

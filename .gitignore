@@ -1,0 +1,11 @@
+/.gradle/
+/build/
+/**/build/
+/local.properties
+/.idea/
+*.iml
+.kotlin/
+/.worktrees/
+.DS_Store
+.carryctx/config.local.toml
+.worktrees/
