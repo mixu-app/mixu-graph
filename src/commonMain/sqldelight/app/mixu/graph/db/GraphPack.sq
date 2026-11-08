@@ -1,0 +1,255 @@
+-- SPDX-License-Identifier: Apache-2.0
+-- SQLDelight schema for the immutable Mixu Graph Pack SQLite container (v1).
+
+CREATE TABLE pack_metadata (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
+    graph_schema_version INTEGER NOT NULL,
+    work_id TEXT NOT NULL,
+    edition_id TEXT NOT NULL,
+    graph_version TEXT NOT NULL,
+    reveal_anchor_map_version INTEGER NOT NULL,
+    package_format TEXT NOT NULL,
+    publication_policy TEXT NOT NULL,
+    source_excerpt_policy TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    copyright_basis TEXT NOT NULL,
+    validator_version TEXT,
+    extraction_version TEXT,
+    model_id TEXT,
+    prompt_version TEXT,
+    quality_report_id TEXT,
+    has_counts INTEGER NOT NULL DEFAULT 0,
+    count_entities INTEGER,
+    count_assertions INTEGER,
+    count_events INTEGER,
+    count_evidence_anchors INTEGER
+);
+
+CREATE TABLE reveal_anchors (
+    anchor_id TEXT NOT NULL PRIMARY KEY,
+    edition_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL UNIQUE,
+    locator_href TEXT NOT NULL,
+    locator_type TEXT NOT NULL,
+    locator_title TEXT,
+    locator_progression REAL,
+    locator_total_progression REAL,
+    locator_text_before TEXT,
+    locator_text_after TEXT,
+    reveal_kind TEXT NOT NULL,
+    text_hash TEXT
+);
+
+CREATE INDEX idx_reveal_anchors_ordinal ON reveal_anchors(ordinal);
+
+CREATE TABLE entities (
+    entity_id TEXT NOT NULL PRIMARY KEY,
+    entity_type TEXT NOT NULL,
+    first_reveal INTEGER NOT NULL,
+    canonical_name_id TEXT,
+    notes TEXT
+);
+
+CREATE INDEX idx_entities_first_reveal ON entities(first_reveal);
+
+CREATE TABLE entity_names (
+    name_id TEXT NOT NULL PRIMARY KEY,
+    entity_id TEXT NOT NULL REFERENCES entities(entity_id),
+    display_text TEXT NOT NULL,
+    first_reveal INTEGER NOT NULL,
+    name_kind TEXT NOT NULL,
+    evidence_anchor_id TEXT
+);
+
+CREATE INDEX idx_entity_names_first_reveal ON entity_names(entity_id, first_reveal);
+
+CREATE TABLE evidence_anchors (
+    evidence_id TEXT NOT NULL PRIMARY KEY,
+    reveal_ordinal INTEGER NOT NULL,
+    locator_href TEXT NOT NULL,
+    locator_type TEXT NOT NULL,
+    locator_title TEXT,
+    locator_progression REAL,
+    locator_total_progression REAL,
+    locator_text_before TEXT,
+    locator_text_after TEXT,
+    source_hash TEXT,
+    excerpt_policy TEXT NOT NULL,
+    excerpt TEXT
+);
+
+CREATE INDEX idx_evidence_anchors_reveal_ordinal ON evidence_anchors(reveal_ordinal);
+
+CREATE TABLE events (
+    event_id TEXT NOT NULL PRIMARY KEY,
+    event_type TEXT NOT NULL,
+    first_reveal INTEGER NOT NULL,
+    story_time_kind TEXT,
+    story_time_earliest TEXT,
+    story_time_latest TEXT,
+    story_time_expression TEXT,
+    story_time_certainty TEXT
+);
+
+CREATE INDEX idx_events_first_reveal ON events(first_reveal);
+
+CREATE TABLE event_participants (
+    event_id TEXT NOT NULL REFERENCES events(event_id),
+    position INTEGER NOT NULL,
+    entity_id TEXT NOT NULL REFERENCES entities(entity_id),
+    PRIMARY KEY (event_id, position)
+);
+
+CREATE TABLE event_evidence (
+    event_id TEXT NOT NULL REFERENCES events(event_id),
+    position INTEGER NOT NULL,
+    evidence_anchor_id TEXT NOT NULL,
+    PRIMARY KEY (event_id, position)
+);
+
+CREATE TABLE assertions (
+    assertion_id TEXT NOT NULL PRIMARY KEY,
+    subject_id TEXT NOT NULL REFERENCES entities(entity_id),
+    predicate TEXT NOT NULL,
+    object_kind TEXT NOT NULL,
+    object_entity_id TEXT,
+    object_literal_value TEXT,
+    object_literal_unit TEXT,
+    attribution_kind TEXT NOT NULL,
+    attribution_speaker_id TEXT,
+    attribution_context_anchor_id TEXT,
+    first_reveal INTEGER NOT NULL,
+    evidence_anchor_id TEXT NOT NULL,
+    epistemic_status TEXT NOT NULL,
+    extraction_confidence REAL
+);
+
+CREATE INDEX idx_assertions_first_reveal ON assertions(first_reveal);
+
+CREATE TABLE assertion_qualifiers (
+    assertion_id TEXT NOT NULL REFERENCES assertions(assertion_id),
+    qualifier_key TEXT NOT NULL,
+    qualifier_value TEXT NOT NULL,
+    PRIMARY KEY (assertion_id, qualifier_key)
+);
+
+CREATE TABLE assertion_transitions (
+    transition_id TEXT NOT NULL PRIMARY KEY,
+    assertion_id TEXT NOT NULL REFERENCES assertions(assertion_id),
+    reveal_ordinal INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    evidence_anchor_id TEXT,
+    reason TEXT
+);
+
+CREATE INDEX idx_assertion_transitions_reveal_ordinal
+    ON assertion_transitions(assertion_id, reveal_ordinal);
+
+CREATE TABLE identity_links (
+    link_id TEXT NOT NULL PRIMARY KEY,
+    left_entity_id TEXT NOT NULL REFERENCES entities(entity_id),
+    right_entity_id TEXT NOT NULL REFERENCES entities(entity_id),
+    kind TEXT NOT NULL,
+    first_reveal INTEGER NOT NULL,
+    evidence_anchor_id TEXT
+);
+
+CREATE INDEX idx_identity_links_first_reveal ON identity_links(first_reveal);
+
+selectMetadata:
+SELECT *
+FROM pack_metadata
+WHERE id = 1;
+
+selectRevealAnchors:
+SELECT *
+FROM reveal_anchors
+ORDER BY ordinal ASC;
+
+selectEntities:
+SELECT *
+FROM entities
+ORDER BY first_reveal ASC, entity_id ASC;
+
+selectEntitiesAtReveal:
+SELECT *
+FROM entities
+WHERE first_reveal <= :maxOrdinal
+ORDER BY first_reveal ASC, entity_id ASC;
+
+countEntities:
+SELECT COUNT(*) AS entity_count
+FROM entities;
+
+selectEntityNames:
+SELECT *
+FROM entity_names
+ORDER BY first_reveal ASC, name_id ASC;
+
+selectEntityNamesAtReveal:
+SELECT *
+FROM entity_names
+WHERE first_reveal <= :maxOrdinal
+ORDER BY first_reveal ASC, name_id ASC;
+
+selectEvidenceAnchors:
+SELECT *
+FROM evidence_anchors
+ORDER BY reveal_ordinal ASC, evidence_id ASC;
+
+selectEvents:
+SELECT *
+FROM events
+ORDER BY first_reveal ASC, event_id ASC;
+
+selectEventParticipants:
+SELECT *
+FROM event_participants
+ORDER BY event_id ASC, position ASC;
+
+selectEventEvidence:
+SELECT *
+FROM event_evidence
+ORDER BY event_id ASC, position ASC;
+
+selectAssertions:
+SELECT *
+FROM assertions
+ORDER BY first_reveal ASC, assertion_id ASC;
+
+selectAssertionsAtReveal:
+SELECT a.*
+FROM assertions a
+JOIN entities subj ON subj.entity_id = a.subject_id
+LEFT JOIN entities obj ON a.object_kind = 'ENTITY' AND obj.entity_id = a.object_entity_id
+WHERE a.first_reveal <= :maxOrdinal
+  AND subj.first_reveal <= :maxOrdinal
+  AND (a.object_kind != 'ENTITY' OR obj.first_reveal <= :maxOrdinal)
+ORDER BY a.first_reveal ASC, a.assertion_id ASC;
+
+selectAssertionQualifiers:
+SELECT *
+FROM assertion_qualifiers
+ORDER BY assertion_id ASC, qualifier_key ASC;
+
+selectAssertionTransitions:
+SELECT *
+FROM assertion_transitions
+ORDER BY reveal_ordinal ASC, transition_id ASC;
+
+selectAssertionTransitionsAtReveal:
+SELECT *
+FROM assertion_transitions
+WHERE reveal_ordinal <= :maxOrdinal
+ORDER BY reveal_ordinal ASC, transition_id ASC;
+
+selectIdentityLinks:
+SELECT *
+FROM identity_links
+ORDER BY first_reveal ASC, link_id ASC;
+
+selectIdentityLinksAtReveal:
+SELECT *
+FROM identity_links
+WHERE first_reveal <= :maxOrdinal
+ORDER BY first_reveal ASC, link_id ASC;
