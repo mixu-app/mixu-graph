@@ -1,0 +1,3 @@
+[submodule "build-logic-src"]
+	path = build-logic-src
+	url = https://github.com/mixu-app/mixu-gradle.git

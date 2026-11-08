@@ -15,6 +15,7 @@
     "**/*.md"
   ],
   "ignores": [
+    "build-logic-src",
     ".carryctx",
     ".git",
     ".worktrees",

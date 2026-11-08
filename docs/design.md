@@ -1,6 +1,6 @@
 # Design: temporal narrative graph
 
-Status: **Proposed** · Owner: mixu-core · Consumes: `mixu-contracts` schemas
+Status: **Active** · Owner: mixu-core · Consumes: `mixu-contracts` schemas
 
 ## Problem
 
