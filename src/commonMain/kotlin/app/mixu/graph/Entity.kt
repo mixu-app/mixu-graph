@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package app.mixu.graph
 
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
 /**
  * Coarse taxonomy for graph entities.
  */
+@Serializable
 enum class EntityType {
     PERSON,
     PERSONA,
@@ -15,6 +19,7 @@ enum class EntityType {
 /**
  * Classification of an entity name disclosure.
  */
+@Serializable
 enum class NameKind {
     CANONICAL,
     ALIAS,
@@ -27,12 +32,19 @@ enum class NameKind {
 /**
  * A display name or alias with its own reveal boundary.
  */
+@Serializable
 data class EntityName(
+    @SerialName("name_id")
     val nameId: NameId,
+    @SerialName("entity_id")
     val entityId: EntityId,
+    @SerialName("display_text")
     val displayText: String,
+    @SerialName("first_reveal")
     val firstReveal: Int,
+    @SerialName("name_kind")
     val nameKind: NameKind,
+    @SerialName("evidence_anchor_id")
     val evidenceAnchorId: EvidenceAnchorId? = null,
 ) : Comparable<EntityName> {
     init {
@@ -51,11 +63,17 @@ data class EntityName(
 /**
  * A core narrative entity.
  */
+@Serializable
 data class Entity(
+    @SerialName("entity_id")
     val entityId: EntityId,
+    @SerialName("entity_type")
     val entityType: EntityType,
+    @SerialName("first_reveal")
     val firstReveal: Int,
+    @SerialName("canonical_name_id")
     val canonicalNameId: NameId? = null,
+    @SerialName("notes")
     val notes: String? = null,
 ) : Comparable<Entity> {
     init {

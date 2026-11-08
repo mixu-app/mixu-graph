@@ -1,14 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 package app.mixu.graph
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
 /**
  * Provenance metadata for extracted graph packs.
  */
+@Serializable
 data class Provenance(
+    @SerialName("validator_version")
     val validatorVersion: String,
+    @SerialName("extraction_version")
     val extractionVersion: String? = null,
+    @SerialName("model_id")
     val modelId: String? = null,
+    @SerialName("prompt_version")
     val promptVersion: String? = null,
+    @SerialName("quality_report_id")
     val qualityReportId: String? = null,
 ) {
     init {
@@ -19,10 +30,20 @@ data class Provenance(
 /**
  * Element counts stored in a graph pack manifest.
  */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
 data class ManifestCounts(
+    @EncodeDefault
+    @SerialName("entities")
     val entities: Int = 0,
+    @EncodeDefault
+    @SerialName("assertions")
     val assertions: Int = 0,
+    @EncodeDefault
+    @SerialName("events")
     val events: Int = 0,
+    @EncodeDefault
+    @SerialName("evidence_anchors")
     val evidenceAnchors: Int = 0,
 ) {
     init {
@@ -36,19 +57,33 @@ data class ManifestCounts(
 /**
  * Package manifest for a downloadable or locally generated graph pack.
  */
+@Serializable
 data class GraphPackManifest(
+    @SerialName("graph_schema_version")
     val graphSchemaVersion: Int,
+    @SerialName("work_id")
     val workId: WorkId,
+    @SerialName("edition_id")
     val editionId: EditionId,
+    @SerialName("graph_version")
     val graphVersion: String,
+    @SerialName("reveal_anchor_map_version")
     val revealAnchorMapVersion: Int,
+    @SerialName("checksum_sha256")
     val checksumSha256: String,
+    @SerialName("package_format")
     val packageFormat: String,
+    @SerialName("publication_policy")
     val publicationPolicy: String,
+    @SerialName("source_excerpt_policy")
     val sourceExcerptPolicy: String,
+    @SerialName("created_at")
     val createdAt: String,
+    @SerialName("copyright_basis")
     val copyrightBasis: String,
+    @SerialName("provenance")
     val provenance: Provenance? = null,
+    @SerialName("counts")
     val counts: ManifestCounts? = null,
 ) {
     init {
@@ -66,12 +101,19 @@ data class GraphPackManifest(
 /**
  * In-memory representation of an immutable narrative graph pack.
  */
+@Serializable
 data class GraphPack(
+    @SerialName("manifest")
     val manifest: GraphPackManifest,
+    @SerialName("entities")
     val entities: List<Entity>,
+    @SerialName("names")
     val names: List<EntityName>,
+    @SerialName("assertions")
     val assertions: List<Assertion>,
+    @SerialName("transitions")
     val transitions: List<AssertionTransition> = emptyList(),
+    @SerialName("anchors")
     val anchors: List<RevealAnchor> = emptyList(),
 ) {
     init {

@@ -1,26 +1,45 @@
 // SPDX-License-Identifier: Apache-2.0
 package app.mixu.graph
 
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
 /**
  * Coarse classification used for chapter-level rewind and UI grouping.
  */
+@Serializable
 enum class RevealKind {
+    @SerialName("chapter_start")
     CHAPTER_START,
+
+    @SerialName("paragraph")
     PARAGRAPH,
+
+    @SerialName("image")
     IMAGE,
+
+    @SerialName("note")
     NOTE,
 }
 
 /**
  * Normalized source location. Page numbers are never used.
  */
+@Serializable
 data class Locator(
+    @SerialName("href")
     val href: String,
+    @SerialName("type")
     val type: String,
+    @SerialName("title")
     val title: String? = null,
+    @SerialName("progression")
     val progression: Double? = null,
+    @SerialName("total_progression")
     val totalProgression: Double? = null,
+    @SerialName("text_before")
     val textBefore: String? = null,
+    @SerialName("text_after")
     val textAfter: String? = null,
 ) {
     init {
@@ -38,12 +57,19 @@ data class Locator(
 /**
  * Edition-specific location that orders disclosures.
  */
+@Serializable
 data class RevealAnchor(
+    @SerialName("anchor_id")
     val anchorId: AnchorId,
+    @SerialName("edition_id")
     val editionId: EditionId,
+    @SerialName("ordinal")
     val ordinal: Int,
+    @SerialName("locator")
     val locator: Locator,
+    @SerialName("reveal_kind")
     val revealKind: RevealKind,
+    @SerialName("text_hash")
     val textHash: String? = null,
 ) : Comparable<RevealAnchor> {
     init {
@@ -66,8 +92,11 @@ data class RevealAnchor(
 /**
  * Monotonic, edition-bound upper horizon boundary for graph viewing.
  */
+@Serializable
 data class RevealBoundary(
+    @SerialName("edition_id")
     val editionId: EditionId,
+    @SerialName("max_ordinal")
     val maxOrdinal: Int,
 ) {
     init {
