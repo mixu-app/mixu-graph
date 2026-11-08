@@ -66,7 +66,7 @@ data class Assertion(
     val evidenceAnchorId: EvidenceAnchorId,
     val epistemicStatus: EpistemicStatus,
     val extractionConfidence: Double? = null,
-) {
+) : Comparable<Assertion> {
     init {
         require(predicate.isNotBlank()) { "predicate cannot be blank" }
         require(firstReveal >= 0) { "firstReveal must be non-negative" }
@@ -75,6 +75,13 @@ data class Assertion(
                 "extractionConfidence must be between 0.0 and 1.0"
             }
         }
+    }
+
+    override fun compareTo(other: Assertion): Int = STABLE_COMPARATOR.compare(this, other)
+
+    companion object {
+        val STABLE_COMPARATOR: Comparator<Assertion> =
+            compareBy<Assertion>({ it.firstReveal }, { it.assertionId.value })
     }
 }
 
@@ -88,8 +95,15 @@ data class AssertionTransition(
     val status: EpistemicStatus,
     val evidenceAnchorId: EvidenceAnchorId? = null,
     val reason: String? = null,
-) {
+) : Comparable<AssertionTransition> {
     init {
         require(revealOrdinal >= 0) { "revealOrdinal must be non-negative" }
+    }
+
+    override fun compareTo(other: AssertionTransition): Int = STABLE_COMPARATOR.compare(this, other)
+
+    companion object {
+        val STABLE_COMPARATOR: Comparator<AssertionTransition> =
+            compareBy<AssertionTransition>({ it.revealOrdinal }, { it.transitionId.value })
     }
 }

@@ -140,4 +140,65 @@ data class GraphPack(
             }
         }
     }
+
+    /**
+     * Returns a copy of this GraphPack with all collections sorted deterministically.
+     */
+    fun canonical(): GraphPack =
+        if (isCanonical()) {
+            this
+        } else {
+            GraphPack(
+                manifest = manifest,
+                entities = entities.sortedWith(Entity.STABLE_COMPARATOR),
+                names = names.sortedWith(EntityName.STABLE_COMPARATOR),
+                assertions = assertions.sortedWith(Assertion.STABLE_COMPARATOR),
+                transitions = transitions.sortedWith(AssertionTransition.STABLE_COMPARATOR),
+                anchors = anchors.sortedWith(RevealAnchor.STABLE_COMPARATOR),
+            )
+        }
+
+    /**
+     * Checks whether all collections in this GraphPack are already in canonical order.
+     */
+    fun isCanonical(): Boolean =
+        isSortedWith(entities, Entity.STABLE_COMPARATOR) &&
+            isSortedWith(names, EntityName.STABLE_COMPARATOR) &&
+            isSortedWith(assertions, Assertion.STABLE_COMPARATOR) &&
+            isSortedWith(transitions, AssertionTransition.STABLE_COMPARATOR) &&
+            isSortedWith(anchors, RevealAnchor.STABLE_COMPARATOR)
+
+    companion object {
+        /**
+         * Factory function that constructs a canonical [GraphPack] by sorting all collections.
+         */
+        fun canonical(
+            manifest: GraphPackManifest,
+            entities: List<Entity>,
+            names: List<EntityName>,
+            assertions: List<Assertion>,
+            transitions: List<AssertionTransition> = emptyList(),
+            anchors: List<RevealAnchor> = emptyList(),
+        ): GraphPack =
+            GraphPack(
+                manifest = manifest,
+                entities = entities.sortedWith(Entity.STABLE_COMPARATOR),
+                names = names.sortedWith(EntityName.STABLE_COMPARATOR),
+                assertions = assertions.sortedWith(Assertion.STABLE_COMPARATOR),
+                transitions = transitions.sortedWith(AssertionTransition.STABLE_COMPARATOR),
+                anchors = anchors.sortedWith(RevealAnchor.STABLE_COMPARATOR),
+            )
+    }
+}
+
+private fun <T> isSortedWith(
+    list: List<T>,
+    comparator: Comparator<T>,
+): Boolean {
+    for (i in 0 until list.size - 1) {
+        if (comparator.compare(list[i], list[i + 1]) > 0) {
+            return false
+        }
+    }
+    return true
 }

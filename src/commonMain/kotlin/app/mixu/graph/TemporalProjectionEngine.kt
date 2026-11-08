@@ -18,7 +18,23 @@ data class GraphSearchHit(
     val entity: RevealedEntity,
     val matchedName: EntityName,
     val matchedText: String,
-)
+) {
+    companion object {
+        /**
+         * Stable comparator ordering exact matches first, then entity firstReveal ASC,
+         * then entityId ASC, then matched nameId ASC.
+         */
+        fun comparatorFor(query: String): Comparator<GraphSearchHit> {
+            val trimmed = query.trim()
+            return compareBy(
+                { !it.matchedText.equals(trimmed, ignoreCase = true) },
+                { it.entity.entity.firstReveal },
+                { it.entity.entity.entityId.value },
+                { it.matchedName.nameId.value },
+            )
+        }
+    }
+}
 
 /**
  * Pure projection engine that executes queries directly against a [GraphPack] under a given reveal ordinal.
@@ -27,24 +43,28 @@ data class GraphSearchHit(
 class TemporalProjectionEngine(
     val pack: GraphPack,
 ) {
+    private val canonicalPack: GraphPack = pack.canonical()
+
     /**
      * Compute the full revealed graph view at ordinal [viewOrdinal] for the pack's edition.
      */
     fun project(viewOrdinal: Int): RevealedGraphView {
         require(viewOrdinal >= 0) { "viewOrdinal must be non-negative" }
 
+        val namesByEntity =
+            canonicalPack.names
+                .filter { it.firstReveal <= viewOrdinal }
+                .groupBy { it.entityId }
+
         val visibleEntities = mutableListOf<RevealedEntity>()
         val visibleEntityMap = mutableMapOf<EntityId, RevealedEntity>()
 
-        for (entity in pack.entities) {
+        for (entity in canonicalPack.entities) {
             if (entity.firstReveal <= viewOrdinal) {
-                val revealedNames =
-                    pack.names.filter {
-                        it.entityId == entity.entityId && it.firstReveal <= viewOrdinal
-                    }
+                val revealedNames = namesByEntity[entity.entityId] ?: emptyList()
                 val canonicalName =
                     revealedNames.find { it.nameId == entity.canonicalNameId }
-                        ?: revealedNames.minByOrNull { it.firstReveal }
+                        ?: revealedNames.firstOrNull()
 
                 val revealed =
                     RevealedEntity(
@@ -57,9 +77,15 @@ class TemporalProjectionEngine(
                 visibleEntityMap[entity.entityId] = revealed
             }
         }
+        visibleEntities.sortWith(RevealedEntity.STABLE_COMPARATOR)
+
+        val transitionsByAssertion =
+            canonicalPack.transitions
+                .filter { it.revealOrdinal <= viewOrdinal }
+                .groupBy { it.assertionId }
 
         val visibleAssertions = mutableListOf<RevealedAssertion>()
-        for (assertion in pack.assertions) {
+        for (assertion in canonicalPack.assertions) {
             if (assertion.firstReveal <= viewOrdinal) {
                 if (!visibleEntityMap.containsKey(assertion.subjectId)) continue
 
@@ -67,12 +93,7 @@ class TemporalProjectionEngine(
                     if (!visibleEntityMap.containsKey(assertion.objectRef.entityId)) continue
                 }
 
-                val validTransitions =
-                    pack.transitions
-                        .filter {
-                            it.assertionId == assertion.assertionId &&
-                                it.revealOrdinal <= viewOrdinal
-                        }.sortedBy { it.revealOrdinal }
+                val validTransitions = transitionsByAssertion[assertion.assertionId] ?: emptyList()
                 val activeTransition = validTransitions.lastOrNull()
                 val currentStatus = activeTransition?.status ?: assertion.epistemicStatus
 
@@ -86,9 +107,10 @@ class TemporalProjectionEngine(
                 )
             }
         }
+        visibleAssertions.sortWith(RevealedAssertion.STABLE_COMPARATOR)
 
         return RevealedGraphView(
-            editionId = pack.manifest.editionId,
+            editionId = canonicalPack.manifest.editionId,
             viewOrdinal = viewOrdinal,
             entities = visibleEntities,
             assertions = visibleAssertions,
@@ -103,15 +125,15 @@ class TemporalProjectionEngine(
         viewOrdinal: Int,
     ): RevealedEntity? {
         val entity =
-            pack.entities.find { it.entityId == entityId && it.firstReveal <= viewOrdinal }
+            canonicalPack.entities.find { it.entityId == entityId && it.firstReveal <= viewOrdinal }
                 ?: return null
         val revealedNames =
-            pack.names.filter {
-                it.entityId == entityId && it.firstReveal <= viewOrdinal
-            }
+            canonicalPack.names
+                .filter { it.entityId == entityId && it.firstReveal <= viewOrdinal }
+                .sortedWith(EntityName.STABLE_COMPARATOR)
         val canonicalName =
             revealedNames.find { it.nameId == entity.canonicalNameId }
-                ?: revealedNames.minByOrNull { it.firstReveal }
+                ?: revealedNames.firstOrNull()
 
         return RevealedEntity(
             entity = entity,
@@ -130,13 +152,14 @@ class TemporalProjectionEngine(
     ): List<RevealedAssertion> {
         findEntity(entityId, viewOrdinal) ?: return emptyList()
         val view = project(viewOrdinal)
-        return view.assertions.filter {
-            it.assertion.subjectId == entityId ||
-                (
-                    it.assertion.objectRef is ObjectRef.Entity &&
-                        it.assertion.objectRef.entityId == entityId
-                )
-        }
+        return view.assertions
+            .filter {
+                it.assertion.subjectId == entityId ||
+                    (
+                        it.assertion.objectRef is ObjectRef.Entity &&
+                            it.assertion.objectRef.entityId == entityId
+                    )
+            }.sortedWith(RevealedAssertion.STABLE_COMPARATOR)
     }
 
     /**
@@ -188,11 +211,14 @@ class TemporalProjectionEngine(
             visitedEntityIds
                 .filter { it != focusEntityId }
                 .mapNotNull { id -> view.entities.find { it.entity.entityId == id } }
+                .sortedWith(RevealedEntity.STABLE_COMPARATOR)
+
+        val sortedAssertions = collectedAssertions.sortedWith(RevealedAssertion.STABLE_COMPARATOR)
 
         return BoundedNeighbourhood(
             focusEntity = focus,
             neighbours = neighbours,
-            assertions = collectedAssertions,
+            assertions = sortedAssertions,
             depth = depth,
         )
     }
@@ -207,23 +233,26 @@ class TemporalProjectionEngine(
         if (query.isBlank()) return emptyList()
         val normalizedQuery = query.trim().lowercase()
 
+        val namesByEntity =
+            canonicalPack.names
+                .filter { it.firstReveal <= viewOrdinal }
+                .groupBy { it.entityId }
+
         val results = mutableListOf<GraphSearchHit>()
-        for (entity in pack.entities) {
+        for (entity in canonicalPack.entities) {
             if (entity.firstReveal <= viewOrdinal) {
-                val revealedNames =
-                    pack.names.filter {
-                        it.entityId == entity.entityId && it.firstReveal <= viewOrdinal
-                    }
+                val revealedNames = namesByEntity[entity.entityId] ?: emptyList()
                 val matchingName =
                     revealedNames.find {
-                        it.displayText.lowercase().contains(
-                            normalizedQuery,
-                        )
+                        it.displayText.equals(query.trim(), ignoreCase = true)
+                    } ?: revealedNames.find {
+                        it.displayText.lowercase().contains(normalizedQuery)
                     }
+
                 if (matchingName != null) {
                     val canonicalName =
                         revealedNames.find { it.nameId == entity.canonicalNameId }
-                            ?: revealedNames.minByOrNull { it.firstReveal }
+                            ?: revealedNames.firstOrNull()
                     val revealed =
                         RevealedEntity(
                             entity = entity,
@@ -241,6 +270,6 @@ class TemporalProjectionEngine(
                 }
             }
         }
-        return results
+        return results.sortedWith(GraphSearchHit.comparatorFor(query))
     }
 }

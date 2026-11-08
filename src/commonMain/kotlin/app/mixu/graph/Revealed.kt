@@ -9,7 +9,7 @@ data class RevealedEntity(
     val canonicalName: EntityName?,
     val allRevealedNames: List<EntityName>,
     val viewOrdinal: Int,
-) {
+) : Comparable<RevealedEntity> {
     init {
         require(viewOrdinal >= entity.firstReveal) {
             "Entity ${entity.entityId.value} firstReveal (${entity.firstReveal}) cannot exceed viewOrdinal ($viewOrdinal)"
@@ -19,6 +19,13 @@ data class RevealedEntity(
                 "RevealedName ${name.nameId.value} firstReveal (${name.firstReveal}) cannot exceed viewOrdinal ($viewOrdinal)"
             }
         }
+    }
+
+    override fun compareTo(other: RevealedEntity): Int = STABLE_COMPARATOR.compare(this, other)
+
+    companion object {
+        val STABLE_COMPARATOR: Comparator<RevealedEntity> =
+            compareBy<RevealedEntity>({ it.entity.firstReveal }, { it.entity.entityId.value })
     }
 }
 
@@ -30,7 +37,7 @@ data class RevealedAssertion(
     val currentStatus: EpistemicStatus,
     val activeTransition: AssertionTransition? = null,
     val viewOrdinal: Int,
-) {
+) : Comparable<RevealedAssertion> {
     init {
         require(viewOrdinal >= assertion.firstReveal) {
             "Assertion ${assertion.assertionId.value} firstReveal (${assertion.firstReveal}) cannot exceed viewOrdinal ($viewOrdinal)"
@@ -40,6 +47,16 @@ data class RevealedAssertion(
                 "Active transition ${activeTransition.transitionId.value} revealOrdinal (${activeTransition.revealOrdinal}) cannot exceed viewOrdinal ($viewOrdinal)"
             }
         }
+    }
+
+    override fun compareTo(other: RevealedAssertion): Int = STABLE_COMPARATOR.compare(this, other)
+
+    companion object {
+        val STABLE_COMPARATOR: Comparator<RevealedAssertion> =
+            compareBy<RevealedAssertion>(
+                { it.assertion.firstReveal },
+                { it.assertion.assertionId.value },
+            )
     }
 }
 

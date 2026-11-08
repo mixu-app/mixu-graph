@@ -45,7 +45,7 @@ data class RevealAnchor(
     val locator: Locator,
     val revealKind: RevealKind,
     val textHash: String? = null,
-) {
+) : Comparable<RevealAnchor> {
     init {
         require(ordinal >= 0) { "ordinal must be non-negative" }
         if (textHash != null) {
@@ -53,6 +53,13 @@ data class RevealAnchor(
                 "textHash must be a 64-char lowercase hex string"
             }
         }
+    }
+
+    override fun compareTo(other: RevealAnchor): Int = STABLE_COMPARATOR.compare(this, other)
+
+    companion object {
+        val STABLE_COMPARATOR: Comparator<RevealAnchor> =
+            compareBy<RevealAnchor> { it.ordinal }
     }
 }
 
