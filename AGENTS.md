@@ -14,10 +14,8 @@
 
 ## Current phase
 
-- Documentation-first. No product code until a scoped CarryCtx task authorizes
-  it.
-- `just check` runs markdownlint, then Gradle once a wrapper exists; until then
-  it prints a documented phase exception. Do not weaken the recipe.
+- Implementation phase. Scoped CarryCtx tasks authorize incremental features.
+- `just check` runs markdownlint and Gradle (`./gradlew --no-daemon check`). Do not weaken the recipe.
 
 ## Non-negotiable semantics
 
@@ -55,7 +53,7 @@
 ## Gates
 
 ```sh
-just check      # markdownlint + gradle (phase exception until wrapper lands)
+just check      # markdownlint + gradle check
 just lint-md
 ```
 
