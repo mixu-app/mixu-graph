@@ -4,11 +4,12 @@ plugins {
     id("mixu.kotlin.multiplatform")
     id("mixu.quality")
     id("mixu.reproducible")
+    id("mixu.maven.publish")
     alias(libs.plugins.kotlin.serialization)
 }
 
 group = "app.mixu"
-version = "0.1.0"
+version = "0.0.1"
 description = "Temporal narrative graph engine for Mixu."
 
 val mixuCatalog = extensions.getByType<VersionCatalogsExtension>().named("libs")
