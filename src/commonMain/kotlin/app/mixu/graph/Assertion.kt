@@ -155,6 +155,8 @@ data class Assertion(
     val epistemicStatus: EpistemicStatus,
     @SerialName("extraction_confidence")
     val extractionConfidence: Double? = null,
+    @SerialName("reveal_char_end")
+    val revealCharEnd: Int? = null,
 ) : Comparable<Assertion> {
     init {
         require(predicate.isNotBlank()) { "predicate cannot be blank" }
@@ -163,6 +165,9 @@ data class Assertion(
             require(extractionConfidence in 0.0..1.0) {
                 "extractionConfidence must be between 0.0 and 1.0"
             }
+        }
+        if (revealCharEnd != null) {
+            require(revealCharEnd >= 0) { "revealCharEnd must be non-negative" }
         }
     }
 
@@ -191,9 +196,14 @@ data class AssertionTransition(
     val evidenceAnchorId: EvidenceAnchorId? = null,
     @SerialName("reason")
     val reason: String? = null,
+    @SerialName("reveal_char_end")
+    val revealCharEnd: Int? = null,
 ) : Comparable<AssertionTransition> {
     init {
         require(revealOrdinal >= 0) { "revealOrdinal must be non-negative" }
+        if (revealCharEnd != null) {
+            require(revealCharEnd >= 0) { "revealCharEnd must be non-negative" }
+        }
     }
 
     override fun compareTo(other: AssertionTransition): Int = STABLE_COMPARATOR.compare(this, other)

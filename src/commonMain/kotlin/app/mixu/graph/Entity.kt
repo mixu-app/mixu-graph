@@ -46,10 +46,15 @@ data class EntityName(
     val nameKind: NameKind,
     @SerialName("evidence_anchor_id")
     val evidenceAnchorId: EvidenceAnchorId? = null,
+    @SerialName("reveal_char_end")
+    val revealCharEnd: Int? = null,
 ) : Comparable<EntityName> {
     init {
         require(displayText.isNotBlank()) { "displayText cannot be blank" }
         require(firstReveal >= 0) { "firstReveal must be non-negative" }
+        if (revealCharEnd != null) {
+            require(revealCharEnd >= 0) { "revealCharEnd must be non-negative" }
+        }
     }
 
     override fun compareTo(other: EntityName): Int = STABLE_COMPARATOR.compare(this, other)
@@ -75,9 +80,14 @@ data class Entity(
     val canonicalNameId: NameId? = null,
     @SerialName("notes")
     val notes: String? = null,
+    @SerialName("reveal_char_end")
+    val revealCharEnd: Int? = null,
 ) : Comparable<Entity> {
     init {
         require(firstReveal >= 0) { "firstReveal must be non-negative" }
+        if (revealCharEnd != null) {
+            require(revealCharEnd >= 0) { "revealCharEnd must be non-negative" }
+        }
     }
 
     override fun compareTo(other: Entity): Int = STABLE_COMPARATOR.compare(this, other)

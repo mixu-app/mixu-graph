@@ -462,4 +462,49 @@ class ContractSerializationTest {
         val encodedId = GraphJson.encodeToString(EntityId("e_test"))
         assertEquals("\"e_test\"", encodedId)
     }
+
+    @Test
+    fun roundTripAdr042OptionalRevealCharEndAndIdentityLinkFields() {
+        val entityWithCharEnd =
+            """
+            {
+              "entity_id": "e_ishida",
+              "entity_type": "PERSON",
+              "first_reveal": 1,
+              "canonical_name_id": "n_ishida",
+              "reveal_char_end": 128
+            }
+            """.trimIndent()
+        val decodedEntity = GraphJson.decodeFromString<Entity>(entityWithCharEnd)
+        assertEquals(128, decodedEntity.revealCharEnd)
+        assertEquals(
+            decodedEntity,
+            GraphJson.decodeFromString<Entity>(GraphJson.encodeToString(decodedEntity)),
+        )
+
+        val framedIdentityLinkJson =
+            """
+            {
+              "link_id": "link_hyp",
+              "entity_ids": ["e_ishida", "e_grey"],
+              "kind": "CANDIDATE",
+              "first_reveal": 3,
+              "reveal_char_end": 264,
+              "epistemic_status": "CLAIMED",
+              "frame_id": "hyp:theory_a"
+            }
+            """.trimIndent()
+        val decodedLink = GraphJson.decodeFromString<IdentityLink>(framedIdentityLinkJson)
+        assertEquals(264, decodedLink.revealCharEnd)
+        assertEquals(EpistemicStatus.CLAIMED, decodedLink.epistemicStatus)
+        assertEquals("hyp:theory_a", decodedLink.frameId)
+        assertEquals(false, decodedLink.isCollapsible())
+
+        // Omitting epistemic_status and frame_id remains collapsible for v1 compatibility
+        val legacyLink = GraphJson.decodeFromString<IdentityLink>(identityLinkJson)
+        assertEquals(null, legacyLink.revealCharEnd)
+        assertEquals(null, legacyLink.epistemicStatus)
+        assertEquals(null, legacyLink.frameId)
+        assertEquals(true, legacyLink.isCollapsible())
+    }
 }
