@@ -22,7 +22,11 @@ CREATE TABLE pack_metadata (
     count_entities INTEGER,
     count_assertions INTEGER,
     count_events INTEGER,
-    count_evidence_anchors INTEGER
+    count_evidence_anchors INTEGER,
+    series_id TEXT,
+    part_index INTEGER,
+    total_parts INTEGER,
+    body_winnow_fingerprint TEXT
 );
 
 CREATE TABLE reveal_anchors (
@@ -158,7 +162,8 @@ CREATE TABLE identity_links (
     evidence_anchor_id TEXT,
     reveal_char_end INTEGER,
     epistemic_status TEXT,
-    frame_id TEXT
+    frame_id TEXT,
+    hypothesis_frame TEXT
 );
 
 CREATE INDEX idx_identity_links_first_reveal ON identity_links(first_reveal);

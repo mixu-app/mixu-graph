@@ -708,4 +708,93 @@ class SqliteGraphPackStoreTest {
             tempDir.toFile().deleteRecursively()
         }
     }
+
+    @Test
+    fun roundTripsAdr043EntityTypesHypothesisFrameAndManifestMetadata() {
+        val tempDir = Files.createTempDirectory("mixu-graph-sqlite-adr043-")
+        try {
+            val bundle = loadSyntheticFixture("locked-stair")
+            val textWorkEnt =
+                Entity(
+                    entityId = EntityId("e_reference_chronicle"),
+                    entityType = EntityType.TEXT_WORK,
+                    firstReveal = 1,
+                    canonicalNameId = NameId("n_reference_chronicle"),
+                )
+            val motifEnt =
+                Entity(
+                    entityId = EntityId("e_folklore_motif"),
+                    entityType = EntityType.MOTIF,
+                    firstReveal = 1,
+                    canonicalNameId = NameId("n_folklore_motif"),
+                )
+            val extraNames =
+                listOf(
+                    EntityName(
+                        nameId = NameId("n_reference_chronicle"),
+                        entityId = textWorkEnt.entityId,
+                        displayText = "Harbor Gazette",
+                        firstReveal = 1,
+                        nameKind = NameKind.TITLE,
+                    ),
+                    EntityName(
+                        nameId = NameId("n_folklore_motif"),
+                        entityId = motifEnt.entityId,
+                        displayText = "Counting Rhyme",
+                        firstReveal = 1,
+                        nameKind = NameKind.CANONICAL,
+                    ),
+                )
+            val updatedLinks =
+                bundle.identityLinks.mapIndexed { idx, lk ->
+                    if (idx == 0) {
+                        lk.copy(
+                            epistemicStatus = EpistemicStatus.CLAIMED,
+                            hypothesisFrame = "theory:alibi_window",
+                        )
+                    } else {
+                        lk
+                    }
+                }
+            val upgradedManifest =
+                bundle.pack.manifest.copy(
+                    seriesId = "series:locked_trilogy",
+                    partIndex = 1,
+                    totalParts = 2,
+                    bodyWinnowFingerprint = "winnow-v1:1234567890abcdef",
+                )
+            val upgradedPack =
+                GraphPack.canonical(
+                    manifest = upgradedManifest,
+                    entities = bundle.pack.entities + textWorkEnt + motifEnt,
+                    names = bundle.pack.names + extraNames,
+                    assertions = bundle.pack.assertions,
+                    transitions = bundle.pack.transitions,
+                    anchors = bundle.pack.anchors,
+                )
+
+            val sqlitePath = tempDir.resolve("adr043.sqlite")
+            val written =
+                GraphPackSqliteContainer.writePack(
+                    sqlitePath = sqlitePath,
+                    pack = upgradedPack,
+                    events = bundle.events,
+                    evidenceAnchors = bundle.evidenceAnchors,
+                    identityLinks = updatedLinks,
+                )
+
+            val loaded =
+                assertIs<GraphPackLoadResult.Success>(
+                    GraphPackSqliteLoader.load(sqlitePath, expectedSha256 = written.sha256),
+                )
+            assertEquals("series:locked_trilogy", loaded.pack.manifest.seriesId)
+            assertEquals(1, loaded.pack.manifest.partIndex)
+            assertEquals(2, loaded.pack.manifest.totalParts)
+            assertEquals("winnow-v1:1234567890abcdef", loaded.pack.manifest.bodyWinnowFingerprint)
+            assertEquals(upgradedPack.copy(manifest = written.manifest), loaded.pack)
+            assertEquals(updatedLinks, loaded.identityLinks)
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
 }

@@ -505,6 +505,69 @@ class ContractSerializationTest {
         assertEquals(null, legacyLink.revealCharEnd)
         assertEquals(null, legacyLink.epistemicStatus)
         assertEquals(null, legacyLink.frameId)
+        assertEquals(null, legacyLink.hypothesisFrame)
         assertEquals(true, legacyLink.isCollapsible())
+    }
+
+    @Test
+    fun roundTripAdr043EntityTypesHypothesisFrameAndMultipartManifest() {
+        val textWork =
+            GraphJson.decodeFromString<Entity>(
+                """{"entity_id":"e_chronicle","entity_type":"TEXT_WORK","first_reveal":1}""",
+            )
+        val motif =
+            GraphJson.decodeFromString<Entity>(
+                """{"entity_id":"e_cipher","entity_type":"MOTIF","first_reveal":2}""",
+            )
+        assertEquals(EntityType.TEXT_WORK, textWork.entityType)
+        assertEquals(EntityType.MOTIF, motif.entityType)
+
+        val hypLinkJson =
+            """
+            {
+              "link_id": "link_hyp_adr043",
+              "entity_ids": ["e_ishida", "e_grey"],
+              "kind": "CANDIDATE",
+              "first_reveal": 4,
+              "epistemic_status": "CLAIMED",
+              "hypothesis_frame": "theory:alibi_window"
+            }
+            """.trimIndent()
+        val decodedHypLink = GraphJson.decodeFromString<IdentityLink>(hypLinkJson)
+        assertEquals("theory:alibi_window", decodedHypLink.hypothesisFrame)
+        assertEquals("theory:alibi_window", decodedHypLink.effectiveHypothesisFrame())
+        assertEquals(false, decodedHypLink.isCollapsible())
+
+        val multipartJson =
+            """
+            {
+              "graph_schema_version": 1,
+              "work_id": "work_trilogy",
+              "edition_id": "ed_trilogy_p2",
+              "graph_version": "0.1.0",
+              "reveal_anchor_map_version": 1,
+              "checksum_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "package_format": "sqlite+zstd",
+              "publication_policy": "PRIVATE_ONLY",
+              "source_excerpt_policy": "LOCATOR_ONLY",
+              "created_at": "2026-11-25T00:00:00Z",
+              "copyright_basis": "SYNTHETIC_ORIGINAL",
+              "series_id": "series:detective_cycle",
+              "part_index": 2,
+              "total_parts": 3,
+              "body_winnow_fingerprint": "winnow-v1:abcdef0123456789"
+            }
+            """.trimIndent()
+        val decodedManifest = GraphJson.decodeFromString<GraphPackManifest>(multipartJson)
+        assertEquals("series:detective_cycle", decodedManifest.seriesId)
+        assertEquals(2, decodedManifest.partIndex)
+        assertEquals(3, decodedManifest.totalParts)
+        assertEquals("winnow-v1:abcdef0123456789", decodedManifest.bodyWinnowFingerprint)
+        assertEquals(
+            decodedManifest,
+            GraphJson.decodeFromString<GraphPackManifest>(
+                GraphJson.encodeToString(decodedManifest),
+            ),
+        )
     }
 }

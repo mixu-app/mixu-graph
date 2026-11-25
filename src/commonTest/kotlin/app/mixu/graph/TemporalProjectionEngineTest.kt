@@ -436,4 +436,73 @@ class TemporalProjectionEngineTest {
         // Seek-back idempotency
         assertEquals(v2WithHyp, engine.project(viewOrdinal = 2, viewCharOffset = 150))
     }
+
+    @Test
+    fun adr043HypothesisFrameStaysUncollapsedWithTextWorkAndMotifEntities() {
+        val ePrimary = EntityId("entity:detective")
+        val eMask = EntityId("entity:mask")
+        val eChronicle = EntityId("entity:old_chronicle")
+        val eMotif = EntityId("entity:bell_cipher")
+
+        val pack =
+            GraphPack(
+                manifest = manifest,
+                entities =
+                    listOf(
+                        Entity(
+                            entityId = ePrimary,
+                            entityType = EntityType.PERSON,
+                            firstReveal = 1,
+                        ),
+                        Entity(entityId = eMask, entityType = EntityType.PERSONA, firstReveal = 2),
+                        Entity(
+                            entityId = eChronicle,
+                            entityType = EntityType.TEXT_WORK,
+                            firstReveal = 3,
+                        ),
+                        Entity(entityId = eMotif, entityType = EntityType.MOTIF, firstReveal = 3),
+                    ),
+                names =
+                    listOf(
+                        EntityName(
+                            NameId("n:det"),
+                            ePrimary,
+                            "Inspector Lin",
+                            1,
+                            NameKind.CANONICAL,
+                        ),
+                        EntityName(NameId("n:mask"), eMask, "Bell Caller", 2, NameKind.ALIAS),
+                        EntityName(NameId("n:chr"), eChronicle, "Harbor Annals", 3, NameKind.TITLE),
+                        EntityName(
+                            NameId("n:mtf"),
+                            eMotif,
+                            "Seven Bells Cipher",
+                            3,
+                            NameKind.CANONICAL,
+                        ),
+                    ),
+                assertions = emptyList(),
+                identityLinks =
+                    listOf(
+                        IdentityLink(
+                            linkId = LinkId("link:hyp_frame"),
+                            entityIds = listOf(ePrimary, eMask),
+                            kind = IdentityLinkKind.CANDIDATE,
+                            firstReveal = 3,
+                            epistemicStatus = EpistemicStatus.OBSERVED,
+                            hypothesisFrame = "theory:bell_hypothesis",
+                        ),
+                    ),
+            )
+
+        val view = TemporalProjectionEngine(pack).project(viewOrdinal = 3)
+        assertEquals(4, view.entities.size)
+        assertTrue(view.collapsibleIdentityLinks.isEmpty())
+        assertEquals(1, view.hypothesizedIdentityLinks.size)
+        assertEquals(
+            "theory:bell_hypothesis",
+            view.hypothesizedIdentityLinks.first().hypothesisFrame,
+        )
+        assertEquals(4, view.dsuClusters.size)
+    }
 }

@@ -266,7 +266,7 @@ class ReadOnlyGraphPackDatabase internal constructor(
                 sqlitePath = sqlitePath,
                 sql =
                     """
-                    SELECT link_id, left_entity_id, right_entity_id, kind, first_reveal, evidence_anchor_id, reveal_char_end, epistemic_status, frame_id
+                    SELECT *
                     FROM identity_links
                     WHERE first_reveal <= $maxOrdinal
                     ORDER BY first_reveal ASC, link_id ASC;
@@ -936,7 +936,8 @@ object GraphPackSqliteContainer {
                     reveal_anchor_map_version, package_format, publication_policy,
                     source_excerpt_policy, created_at, copyright_basis,
                     validator_version, extraction_version, model_id, prompt_version, quality_report_id,
-                    has_counts, count_entities, count_assertions, count_events, count_evidence_anchors
+                    has_counts, count_entities, count_assertions, count_events, count_evidence_anchors,
+                    series_id, part_index, total_parts, body_winnow_fingerprint
                 ) VALUES (
                     1,
                     $effectiveSchemaVersion,
@@ -958,7 +959,11 @@ object GraphPackSqliteContainer {
                     ${c?.entities ?: "NULL"},
                     ${c?.assertions ?: "NULL"},
                     ${c?.events ?: "NULL"},
-                    ${c?.evidenceAnchors ?: "NULL"}
+                    ${c?.evidenceAnchors ?: "NULL"},
+                    ${sqlNullableString(m.seriesId)},
+                    ${m.partIndex ?: "NULL"},
+                    ${m.totalParts ?: "NULL"},
+                    ${sqlNullableString(m.bodyWinnowFingerprint)}
                 );
                 """.trimIndent(),
             )
@@ -1176,7 +1181,7 @@ object GraphPackSqliteContainer {
                     """
                     INSERT INTO identity_links (
                         link_id, left_entity_id, right_entity_id, kind, first_reveal, evidence_anchor_id,
-                        reveal_char_end, epistemic_status, frame_id
+                        reveal_char_end, epistemic_status, frame_id, hypothesis_frame
                     ) VALUES (
                         ${sqlString(link.linkId.value)},
                         ${sqlString(link.entityIds[0].value)},
@@ -1186,7 +1191,8 @@ object GraphPackSqliteContainer {
                         ${sqlNullableString(link.evidenceAnchorId?.value)},
                         ${link.revealCharEnd ?: "NULL"},
                         ${sqlNullableString(link.epistemicStatus?.name)},
-                        ${sqlNullableString(link.frameId)}
+                        ${sqlNullableString(link.frameId)},
+                        ${sqlNullableString(link.hypothesisFrame)}
                     );
                     """.trimIndent(),
                 )
@@ -1302,6 +1308,14 @@ internal data class PackMetadataRow(
     val countEvents: Int? = null,
     @SerialName("count_evidence_anchors")
     val countEvidenceAnchors: Int? = null,
+    @SerialName("series_id")
+    val seriesId: String? = null,
+    @SerialName("part_index")
+    val partIndex: Int? = null,
+    @SerialName("total_parts")
+    val totalParts: Int? = null,
+    @SerialName("body_winnow_fingerprint")
+    val bodyWinnowFingerprint: String? = null,
 ) {
     fun toDomain(verifiedSha256: String): GraphPackManifest {
         val provenance =
@@ -1339,6 +1353,10 @@ internal data class PackMetadataRow(
             copyrightBasis = copyrightBasis,
             provenance = provenance,
             counts = counts,
+            seriesId = seriesId,
+            partIndex = partIndex,
+            totalParts = totalParts,
+            bodyWinnowFingerprint = bodyWinnowFingerprint,
         )
     }
 }
@@ -1693,6 +1711,8 @@ internal data class IdentityLinkRow(
     val epistemicStatus: String? = null,
     @SerialName("frame_id")
     val frameId: String? = null,
+    @SerialName("hypothesis_frame")
+    val hypothesisFrame: String? = null,
 ) {
     fun toDomain(): IdentityLink =
         IdentityLink(
@@ -1704,6 +1724,7 @@ internal data class IdentityLinkRow(
             revealCharEnd = revealCharEnd,
             epistemicStatus = epistemicStatus?.let { EpistemicStatus.valueOf(it) },
             frameId = frameId,
+            hypothesisFrame = hypothesisFrame,
         )
 }
 
@@ -1730,7 +1751,11 @@ private const val GRAPH_PACK_DDL: String =
         count_entities INTEGER,
         count_assertions INTEGER,
         count_events INTEGER,
-        count_evidence_anchors INTEGER
+        count_evidence_anchors INTEGER,
+        series_id TEXT,
+        part_index INTEGER,
+        total_parts INTEGER,
+        body_winnow_fingerprint TEXT
     );
     CREATE TABLE reveal_anchors (
         anchor_id TEXT NOT NULL PRIMARY KEY,
@@ -1848,7 +1873,8 @@ private const val GRAPH_PACK_DDL: String =
         evidence_anchor_id TEXT,
         reveal_char_end INTEGER,
         epistemic_status TEXT,
-        frame_id TEXT
+        frame_id TEXT,
+        hypothesis_frame TEXT
     );
     CREATE INDEX idx_identity_links_first_reveal ON identity_links(first_reveal);
     """
