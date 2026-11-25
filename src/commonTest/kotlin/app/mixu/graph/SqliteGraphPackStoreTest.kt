@@ -135,6 +135,7 @@ class SqliteGraphPackStoreTest {
             listOf(
                 Paths.get("..", "mixu-fixtures", "fixtures", "synthetic"),
                 Paths.get("mixu-fixtures", "fixtures", "synthetic"),
+                Paths.get("..", "..", "..", "mixu-fixtures", "fixtures", "synthetic"),
             )
         val found = candidates.firstOrNull { Files.isDirectory(it) }
         check(found != null) { "Could not locate mixu-fixtures/fixtures/synthetic directory" }
@@ -629,6 +630,80 @@ class SqliteGraphPackStoreTest {
             // File must remain byte-for-byte identical and entity count unchanged
             assertEquals(written.sha256, GraphPackSqliteContainer.computeSha256(sqlitePath))
             assertEquals(bundle.fixture.entities.size, db.entityCount())
+        } finally {
+            tempDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun roundTripsAdr042RevealCharEndAndIdentityLinkMetadata() {
+        val tempDir = Files.createTempDirectory("mixu-graph-sqlite-adr042-")
+        try {
+            val bundle = loadSyntheticFixture("locked-stair")
+            val updatedEntities =
+                bundle.pack.entities.mapIndexed { idx, ent ->
+                    ent.copy(revealCharEnd = (idx + 1) * 25)
+                }
+            val updatedNames =
+                bundle.pack.names.mapIndexed { idx, nm ->
+                    nm.copy(revealCharEnd = (idx + 1) * 30)
+                }
+            val updatedAssertions =
+                bundle.pack.assertions.mapIndexed { idx, asr ->
+                    asr.copy(revealCharEnd = (idx + 1) * 40)
+                }
+            val updatedTransitions =
+                bundle.pack.transitions.mapIndexed { idx, tr ->
+                    tr.copy(revealCharEnd = (idx + 1) * 50)
+                }
+            val updatedLinks =
+                bundle.identityLinks.mapIndexed { idx, lk ->
+                    val linkStatus =
+                        if (idx == 0) EpistemicStatus.CLAIMED else EpistemicStatus.OBSERVED
+                    lk.copy(
+                        revealCharEnd = (idx + 1) * 60,
+                        epistemicStatus = linkStatus,
+                        frameId = if (idx == 0) "hyp:frame_0" else null,
+                    )
+                }
+            val upgradedPack =
+                GraphPack.canonical(
+                    manifest = bundle.pack.manifest,
+                    entities = updatedEntities,
+                    names = updatedNames,
+                    assertions = updatedAssertions,
+                    transitions = updatedTransitions,
+                    anchors = bundle.pack.anchors,
+                )
+
+            val sqlitePath = tempDir.resolve("adr042.sqlite")
+            val written =
+                GraphPackSqliteContainer.writePack(
+                    sqlitePath = sqlitePath,
+                    pack = upgradedPack,
+                    events = bundle.events,
+                    evidenceAnchors = bundle.evidenceAnchors,
+                    identityLinks = updatedLinks,
+                )
+
+            val loaded =
+                assertIs<GraphPackLoadResult.Success>(
+                    GraphPackSqliteLoader.load(sqlitePath, expectedSha256 = written.sha256),
+                )
+            assertEquals(upgradedPack.copy(manifest = written.manifest), loaded.pack)
+            assertEquals(updatedLinks, loaded.identityLinks)
+
+            val db =
+                assertIs<GraphPackDatabaseOpenResult.Success>(
+                    GraphPackSqliteLoader.openReadOnly(sqlitePath, written.sha256),
+                ).database
+            val maxOrd =
+                maxOf(
+                    upgradedPack.entities.maxOf { it.firstReveal },
+                    updatedLinks.maxOfOrNull { it.firstReveal } ?: 0,
+                )
+            assertEquals(updatedEntities, db.queryEntitiesAtReveal(maxOrd))
+            assertEquals(updatedLinks, db.queryIdentityLinksAtReveal(maxOrd))
         } finally {
             tempDir.toFile().deleteRecursively()
         }

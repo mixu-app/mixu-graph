@@ -90,6 +90,23 @@ data class RevealAnchor(
 }
 
 /**
+ * Evaluates whether a record disclosed at ([itemOrdinal], [itemCharEnd]) is visible
+ * at cursor ([viewOrdinal], [viewCharOffset]) per INV-7.
+ */
+fun isDisclosedAt(
+    itemOrdinal: Int,
+    itemCharEnd: Int?,
+    viewOrdinal: Int,
+    viewCharOffset: Int? = null,
+): Boolean =
+    when {
+        itemOrdinal < viewOrdinal -> true
+        itemOrdinal > viewOrdinal -> false
+        viewCharOffset == null -> true
+        else -> (itemCharEnd ?: 0) <= viewCharOffset
+    }
+
+/**
  * Monotonic, edition-bound upper horizon boundary for graph viewing.
  */
 @Serializable
@@ -98,13 +115,21 @@ data class RevealBoundary(
     val editionId: EditionId,
     @SerialName("max_ordinal")
     val maxOrdinal: Int,
+    @SerialName("max_char_offset")
+    val maxCharOffset: Int? = null,
 ) {
     init {
         require(maxOrdinal >= 0) { "maxOrdinal must be non-negative" }
+        if (maxCharOffset != null) {
+            require(maxCharOffset >= 0) { "maxCharOffset must be non-negative" }
+        }
     }
 
     fun isPermitted(
         ordinal: Int,
         targetEditionId: EditionId,
-    ): Boolean = targetEditionId == editionId && ordinal <= maxOrdinal
+        revealCharEnd: Int? = null,
+    ): Boolean =
+        targetEditionId == editionId &&
+            isDisclosedAt(ordinal, revealCharEnd, maxOrdinal, maxCharOffset)
 }

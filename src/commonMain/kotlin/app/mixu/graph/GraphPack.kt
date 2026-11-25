@@ -115,6 +115,8 @@ data class GraphPack(
     val transitions: List<AssertionTransition> = emptyList(),
     @SerialName("anchors")
     val anchors: List<RevealAnchor> = emptyList(),
+    @SerialName("identity_links")
+    val identityLinks: List<IdentityLink> = emptyList(),
 ) {
     init {
         validateInvariants()
@@ -181,6 +183,15 @@ data class GraphPack(
                 "Transition ${transition.transitionId.value} revealOrdinal (${transition.revealOrdinal}) cannot precede assertion firstReveal (${assertion.firstReveal})"
             }
         }
+
+        // 6. Identity link endpoint integrity
+        for (link in identityLinks) {
+            for (endpoint in link.entityIds) {
+                require(entityMap.containsKey(endpoint)) {
+                    "IdentityLink ${link.linkId.value} references unknown entity ${endpoint.value}"
+                }
+            }
+        }
     }
 
     /**
@@ -197,6 +208,7 @@ data class GraphPack(
                 assertions = assertions.sortedWith(Assertion.STABLE_COMPARATOR),
                 transitions = transitions.sortedWith(AssertionTransition.STABLE_COMPARATOR),
                 anchors = anchors.sortedWith(RevealAnchor.STABLE_COMPARATOR),
+                identityLinks = identityLinks.sortedWith(IdentityLink.STABLE_COMPARATOR),
             )
         }
 
@@ -208,7 +220,8 @@ data class GraphPack(
             isSortedWith(names, EntityName.STABLE_COMPARATOR) &&
             isSortedWith(assertions, Assertion.STABLE_COMPARATOR) &&
             isSortedWith(transitions, AssertionTransition.STABLE_COMPARATOR) &&
-            isSortedWith(anchors, RevealAnchor.STABLE_COMPARATOR)
+            isSortedWith(anchors, RevealAnchor.STABLE_COMPARATOR) &&
+            isSortedWith(identityLinks, IdentityLink.STABLE_COMPARATOR)
 
     companion object {
         /**
@@ -221,6 +234,7 @@ data class GraphPack(
             assertions: List<Assertion>,
             transitions: List<AssertionTransition> = emptyList(),
             anchors: List<RevealAnchor> = emptyList(),
+            identityLinks: List<IdentityLink> = emptyList(),
         ): GraphPack =
             GraphPack(
                 manifest = manifest,
@@ -229,6 +243,7 @@ data class GraphPack(
                 assertions = assertions.sortedWith(Assertion.STABLE_COMPARATOR),
                 transitions = transitions.sortedWith(AssertionTransition.STABLE_COMPARATOR),
                 anchors = anchors.sortedWith(RevealAnchor.STABLE_COMPARATOR),
+                identityLinks = identityLinks.sortedWith(IdentityLink.STABLE_COMPARATOR),
             )
     }
 }

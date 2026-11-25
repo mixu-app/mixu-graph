@@ -47,7 +47,8 @@ CREATE TABLE entities (
     entity_type TEXT NOT NULL,
     first_reveal INTEGER NOT NULL,
     canonical_name_id TEXT,
-    notes TEXT
+    notes TEXT,
+    reveal_char_end INTEGER
 );
 
 CREATE INDEX idx_entities_first_reveal ON entities(first_reveal);
@@ -58,7 +59,8 @@ CREATE TABLE entity_names (
     display_text TEXT NOT NULL,
     first_reveal INTEGER NOT NULL,
     name_kind TEXT NOT NULL,
-    evidence_anchor_id TEXT
+    evidence_anchor_id TEXT,
+    reveal_char_end INTEGER
 );
 
 CREATE INDEX idx_entity_names_first_reveal ON entity_names(entity_id, first_reveal);
@@ -121,7 +123,8 @@ CREATE TABLE assertions (
     first_reveal INTEGER NOT NULL,
     evidence_anchor_id TEXT NOT NULL,
     epistemic_status TEXT NOT NULL,
-    extraction_confidence REAL
+    extraction_confidence REAL,
+    reveal_char_end INTEGER
 );
 
 CREATE INDEX idx_assertions_first_reveal ON assertions(first_reveal);
@@ -139,7 +142,8 @@ CREATE TABLE assertion_transitions (
     reveal_ordinal INTEGER NOT NULL,
     status TEXT NOT NULL,
     evidence_anchor_id TEXT,
-    reason TEXT
+    reason TEXT,
+    reveal_char_end INTEGER
 );
 
 CREATE INDEX idx_assertion_transitions_reveal_ordinal
@@ -151,7 +155,10 @@ CREATE TABLE identity_links (
     right_entity_id TEXT NOT NULL REFERENCES entities(entity_id),
     kind TEXT NOT NULL,
     first_reveal INTEGER NOT NULL,
-    evidence_anchor_id TEXT
+    evidence_anchor_id TEXT,
+    reveal_char_end INTEGER,
+    epistemic_status TEXT,
+    frame_id TEXT
 );
 
 CREATE INDEX idx_identity_links_first_reveal ON identity_links(first_reveal);

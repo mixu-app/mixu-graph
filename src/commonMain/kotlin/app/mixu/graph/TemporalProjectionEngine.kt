@@ -37,6 +37,93 @@ data class GraphSearchHit(
 }
 
 /**
+ * Result of conditional non-destructive DSU resolution over visible entities and identity links (INV-3).
+ */
+data class ConditionalIdentityResolution(
+    val resolvedByEntity: Map<EntityId, EntityId>,
+    val dsuClusters: Map<EntityId, List<EntityId>>,
+    val collapsibleLinks: List<IdentityLink>,
+    val hypothesizedLinks: List<IdentityLink>,
+)
+
+/**
+ * Compute deterministic, non-destructive DSU clusters strictly from [visibleEntities] and
+ * [visibleLinks]. Only unframed OBSERVED links (or omitted epistemic_status for v1 compatibility)
+ * collapse clusters; cluster roots prefer the earliest disclosed entity.
+ */
+fun computeConditionalIdentityClusters(
+    visibleEntities: List<Entity>,
+    visibleLinks: List<IdentityLink>,
+): ConditionalIdentityResolution {
+    val entityById = visibleEntities.associateBy { it.entityId }
+    val parent = entityById.keys.associateWith { it }.toMutableMap()
+    val rootRank =
+        compareBy<Entity>(
+            { it.firstReveal },
+            { it.revealCharEnd ?: 0 },
+            { it.entityId.value },
+        )
+
+    fun find(id: EntityId): EntityId {
+        var cur = id
+        while (parent[cur] != cur) {
+            val next = parent[cur] ?: break
+            parent[cur] = parent[next] ?: next
+            cur = next
+        }
+        return cur
+    }
+
+    fun union(
+        a: EntityId,
+        b: EntityId,
+    ) {
+        val ra = find(a)
+        val rb = find(b)
+        if (ra == rb) return
+        val ea = entityById[ra]
+        val eb = entityById[rb]
+        if (ea != null && eb != null && rootRank.compare(ea, eb) <= 0) {
+            parent[rb] = ra
+        } else if (ea != null && eb != null) {
+            parent[ra] = rb
+        } else if (ra.value <= rb.value) {
+            parent[rb] = ra
+        } else {
+            parent[ra] = rb
+        }
+    }
+
+    val collapsible = mutableListOf<IdentityLink>()
+    val hypothesized = mutableListOf<IdentityLink>()
+    for (link in visibleLinks) {
+        val endpointsVisible =
+            link.entityIds.size == 2 &&
+                entityById.containsKey(link.entityIds[0]) &&
+                entityById.containsKey(link.entityIds[1])
+        if (endpointsVisible && link.isCollapsible()) {
+            collapsible.add(link)
+            union(link.entityIds[0], link.entityIds[1])
+        } else {
+            hypothesized.add(link)
+        }
+    }
+
+    val resolved = entityById.keys.associateWith { find(it) }
+    val clusters = mutableMapOf<EntityId, MutableList<EntityId>>()
+    for (id in entityById.keys.sortedBy { it.value }) {
+        val root = resolved[id] ?: id
+        clusters.getOrPut(root) { mutableListOf() }.add(id)
+    }
+    return ConditionalIdentityResolution(
+        resolvedByEntity = resolved,
+        dsuClusters = clusters.mapValues { (_, v) -> v.toList() },
+        collapsibleLinks = collapsible,
+        hypothesizedLinks = hypothesized,
+    )
+}
+
+/**
  * Pure projection engine that executes queries directly against a [GraphPack] under a given reveal ordinal.
  * Filtering happens in the query layer; unfiltered structures are never materialized.
  */
@@ -46,47 +133,90 @@ class TemporalProjectionEngine(
     private val canonicalPack: GraphPack = pack.canonical()
 
     /**
-     * Compute the full revealed graph view at ordinal [viewOrdinal] for the pack's edition.
+     * Compute the full revealed graph view at cursor ([viewOrdinal], [viewCharOffset]) for the pack's edition.
      */
-    fun project(viewOrdinal: Int): RevealedGraphView {
+    fun project(
+        viewOrdinal: Int,
+        viewCharOffset: Int? = null,
+        identityLinks: List<IdentityLink> = canonicalPack.identityLinks,
+    ): RevealedGraphView {
         require(viewOrdinal >= 0) { "viewOrdinal must be non-negative" }
+        if (viewCharOffset != null) {
+            require(viewCharOffset >= 0) { "viewCharOffset must be non-negative" }
+        }
 
         val namesByEntity =
             canonicalPack.names
-                .filter { it.firstReveal <= viewOrdinal }
-                .groupBy { it.entityId }
+                .filter {
+                    isDisclosedAt(
+                        it.firstReveal,
+                        it.revealCharEnd,
+                        viewOrdinal,
+                        viewCharOffset,
+                    )
+                }.groupBy { it.entityId }
+
+        val visibleRawEntities =
+            canonicalPack.entities.filter {
+                isDisclosedAt(it.firstReveal, it.revealCharEnd, viewOrdinal, viewCharOffset)
+            }
+        val visibleLinks =
+            identityLinks
+                .filter {
+                    isDisclosedAt(it.firstReveal, it.revealCharEnd, viewOrdinal, viewCharOffset)
+                }.sortedWith(IdentityLink.STABLE_COMPARATOR)
+        val resolution = computeConditionalIdentityClusters(visibleRawEntities, visibleLinks)
 
         val visibleEntities = mutableListOf<RevealedEntity>()
         val visibleEntityMap = mutableMapOf<EntityId, RevealedEntity>()
 
-        for (entity in canonicalPack.entities) {
-            if (entity.firstReveal <= viewOrdinal) {
-                val revealedNames = namesByEntity[entity.entityId] ?: emptyList()
-                val canonicalName =
-                    revealedNames.find { it.nameId == entity.canonicalNameId }
-                        ?: revealedNames.firstOrNull()
+        for (entity in visibleRawEntities) {
+            val revealedNames = namesByEntity[entity.entityId] ?: emptyList()
+            val canonicalName =
+                revealedNames.find { it.nameId == entity.canonicalNameId }
+                    ?: revealedNames.firstOrNull()
 
-                val revealed =
-                    RevealedEntity(
-                        entity = entity,
-                        canonicalName = canonicalName,
-                        allRevealedNames = revealedNames,
-                        viewOrdinal = viewOrdinal,
-                    )
-                visibleEntities.add(revealed)
-                visibleEntityMap[entity.entityId] = revealed
-            }
+            val revealed =
+                RevealedEntity(
+                    entity = entity,
+                    canonicalName = canonicalName,
+                    allRevealedNames = revealedNames,
+                    viewOrdinal = viewOrdinal,
+                    viewCharOffset = viewCharOffset,
+                    resolvedEntityId =
+                        resolution.resolvedByEntity[entity.entityId] ?: entity.entityId,
+                )
+            visibleEntities.add(revealed)
+            visibleEntityMap[entity.entityId] = revealed
         }
         visibleEntities.sortWith(RevealedEntity.STABLE_COMPARATOR)
 
         val transitionsByAssertion =
             canonicalPack.transitions
-                .filter { it.revealOrdinal <= viewOrdinal }
-                .groupBy { it.assertionId }
+                .filter {
+                    isDisclosedAt(
+                        it.revealOrdinal,
+                        it.revealCharEnd,
+                        viewOrdinal,
+                        viewCharOffset,
+                    )
+                }.sortedWith(
+                    compareBy<AssertionTransition>(
+                        { it.revealOrdinal },
+                        { it.revealCharEnd ?: 0 },
+                        { it.transitionId.value },
+                    ),
+                ).groupBy { it.assertionId }
 
         val visibleAssertions = mutableListOf<RevealedAssertion>()
         for (assertion in canonicalPack.assertions) {
-            if (assertion.firstReveal <= viewOrdinal) {
+            if (isDisclosedAt(
+                    assertion.firstReveal,
+                    assertion.revealCharEnd,
+                    viewOrdinal,
+                    viewCharOffset,
+                )
+            ) {
                 if (!visibleEntityMap.containsKey(assertion.subjectId)) continue
 
                 if (assertion.objectRef is ObjectRef.Entity) {
@@ -103,6 +233,7 @@ class TemporalProjectionEngine(
                         currentStatus = currentStatus,
                         activeTransition = activeTransition,
                         viewOrdinal = viewOrdinal,
+                        viewCharOffset = viewCharOffset,
                     ),
                 )
             }
@@ -114,23 +245,33 @@ class TemporalProjectionEngine(
             viewOrdinal = viewOrdinal,
             entities = visibleEntities,
             assertions = visibleAssertions,
+            viewCharOffset = viewCharOffset,
+            identityLinks = visibleLinks,
+            collapsibleIdentityLinks = resolution.collapsibleLinks,
+            hypothesizedIdentityLinks = resolution.hypothesizedLinks,
+            dsuClusters = resolution.dsuClusters,
         )
     }
 
     /**
-     * Entity lookup: returns RevealedEntity if disclosed at or before [viewOrdinal], null otherwise.
+     * Entity lookup: returns RevealedEntity if disclosed at or before ([viewOrdinal], [viewCharOffset]), null otherwise.
      */
     fun findEntity(
         entityId: EntityId,
         viewOrdinal: Int,
+        viewCharOffset: Int? = null,
     ): RevealedEntity? {
         val entity =
-            canonicalPack.entities.find { it.entityId == entityId && it.firstReveal <= viewOrdinal }
-                ?: return null
+            canonicalPack.entities.find {
+                it.entityId == entityId &&
+                    isDisclosedAt(it.firstReveal, it.revealCharEnd, viewOrdinal, viewCharOffset)
+            } ?: return null
         val revealedNames =
             canonicalPack.names
-                .filter { it.entityId == entityId && it.firstReveal <= viewOrdinal }
-                .sortedWith(EntityName.STABLE_COMPARATOR)
+                .filter {
+                    it.entityId == entityId &&
+                        isDisclosedAt(it.firstReveal, it.revealCharEnd, viewOrdinal, viewCharOffset)
+                }.sortedWith(EntityName.STABLE_COMPARATOR)
         val canonicalName =
             revealedNames.find { it.nameId == entity.canonicalNameId }
                 ?: revealedNames.firstOrNull()
@@ -140,18 +281,20 @@ class TemporalProjectionEngine(
             canonicalName = canonicalName,
             allRevealedNames = revealedNames,
             viewOrdinal = viewOrdinal,
+            viewCharOffset = viewCharOffset,
         )
     }
 
     /**
-     * Assertions touching a specific entity (as subject or object) visible at [viewOrdinal].
+     * Assertions touching a specific entity (as subject or object) visible at ([viewOrdinal], [viewCharOffset]).
      */
     fun findAssertionsForEntity(
         entityId: EntityId,
         viewOrdinal: Int,
+        viewCharOffset: Int? = null,
     ): List<RevealedAssertion> {
-        findEntity(entityId, viewOrdinal) ?: return emptyList()
-        val view = project(viewOrdinal)
+        findEntity(entityId, viewOrdinal, viewCharOffset) ?: return emptyList()
+        val view = project(viewOrdinal, viewCharOffset)
         return view.assertions
             .filter {
                 it.assertion.subjectId == entityId ||
@@ -169,10 +312,11 @@ class TemporalProjectionEngine(
         focusEntityId: EntityId,
         viewOrdinal: Int,
         depth: Int = 1,
+        viewCharOffset: Int? = null,
     ): BoundedNeighbourhood? {
         require(depth in 1..2) { "Depth must be 1 or 2" }
-        val focus = findEntity(focusEntityId, viewOrdinal) ?: return null
-        val view = project(viewOrdinal)
+        val focus = findEntity(focusEntityId, viewOrdinal, viewCharOffset) ?: return null
+        val view = project(viewOrdinal, viewCharOffset)
 
         val visitedEntityIds = mutableSetOf(focusEntityId)
         val collectedAssertions = mutableListOf<RevealedAssertion>()
@@ -224,23 +368,36 @@ class TemporalProjectionEngine(
     }
 
     /**
-     * Search over revealed names and entities visible at [viewOrdinal].
+     * Search over revealed names and entities visible at ([viewOrdinal], [viewCharOffset]).
      */
     fun search(
         query: String,
         viewOrdinal: Int,
+        viewCharOffset: Int? = null,
     ): List<GraphSearchHit> {
         if (query.isBlank()) return emptyList()
         val normalizedQuery = query.trim().lowercase()
 
         val namesByEntity =
             canonicalPack.names
-                .filter { it.firstReveal <= viewOrdinal }
-                .groupBy { it.entityId }
+                .filter {
+                    isDisclosedAt(
+                        it.firstReveal,
+                        it.revealCharEnd,
+                        viewOrdinal,
+                        viewCharOffset,
+                    )
+                }.groupBy { it.entityId }
 
         val results = mutableListOf<GraphSearchHit>()
         for (entity in canonicalPack.entities) {
-            if (entity.firstReveal <= viewOrdinal) {
+            if (isDisclosedAt(
+                    entity.firstReveal,
+                    entity.revealCharEnd,
+                    viewOrdinal,
+                    viewCharOffset,
+                )
+            ) {
                 val revealedNames = namesByEntity[entity.entityId] ?: emptyList()
                 val matchingName =
                     revealedNames.find {
@@ -259,6 +416,7 @@ class TemporalProjectionEngine(
                             canonicalName = canonicalName,
                             allRevealedNames = revealedNames,
                             viewOrdinal = viewOrdinal,
+                            viewCharOffset = viewCharOffset,
                         )
                     results.add(
                         GraphSearchHit(

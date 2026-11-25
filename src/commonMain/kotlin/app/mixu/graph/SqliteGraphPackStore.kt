@@ -164,7 +164,7 @@ class ReadOnlyGraphPackDatabase internal constructor(
                 sqlitePath = sqlitePath,
                 sql =
                     """
-                    SELECT entity_id, entity_type, first_reveal, canonical_name_id, notes
+                    SELECT entity_id, entity_type, first_reveal, canonical_name_id, notes, reveal_char_end
                     FROM entities
                     WHERE first_reveal <= $maxOrdinal
                     ORDER BY first_reveal ASC, entity_id ASC;
@@ -184,7 +184,7 @@ class ReadOnlyGraphPackDatabase internal constructor(
                 sqlitePath = sqlitePath,
                 sql =
                     """
-                    SELECT name_id, entity_id, display_text, first_reveal, name_kind, evidence_anchor_id
+                    SELECT name_id, entity_id, display_text, first_reveal, name_kind, evidence_anchor_id, reveal_char_end
                     FROM entity_names
                     WHERE first_reveal <= $maxOrdinal
                     ORDER BY first_reveal ASC, name_id ASC;
@@ -246,7 +246,7 @@ class ReadOnlyGraphPackDatabase internal constructor(
                 sqlitePath = sqlitePath,
                 sql =
                     """
-                    SELECT transition_id, assertion_id, reveal_ordinal, status, evidence_anchor_id, reason
+                    SELECT transition_id, assertion_id, reveal_ordinal, status, evidence_anchor_id, reason, reveal_char_end
                     FROM assertion_transitions
                     WHERE reveal_ordinal <= $maxOrdinal
                     ORDER BY reveal_ordinal ASC, transition_id ASC;
@@ -266,7 +266,7 @@ class ReadOnlyGraphPackDatabase internal constructor(
                 sqlitePath = sqlitePath,
                 sql =
                     """
-                    SELECT link_id, left_entity_id, right_entity_id, kind, first_reveal, evidence_anchor_id
+                    SELECT link_id, left_entity_id, right_entity_id, kind, first_reveal, evidence_anchor_id, reveal_char_end, epistemic_status, frame_id
                     FROM identity_links
                     WHERE first_reveal <= $maxOrdinal
                     ORDER BY first_reveal ASC, link_id ASC;
@@ -995,13 +995,14 @@ object GraphPackSqliteContainer {
                 appendLine(
                     """
                     INSERT INTO entities (
-                        entity_id, entity_type, first_reveal, canonical_name_id, notes
+                        entity_id, entity_type, first_reveal, canonical_name_id, notes, reveal_char_end
                     ) VALUES (
                         ${sqlString(entity.entityId.value)},
                         ${sqlString(entity.entityType.name)},
                         ${entity.firstReveal},
                         ${sqlNullableString(entity.canonicalNameId?.value)},
-                        ${sqlNullableString(entity.notes)}
+                        ${sqlNullableString(entity.notes)},
+                        ${entity.revealCharEnd ?: "NULL"}
                     );
                     """.trimIndent(),
                 )
@@ -1011,14 +1012,15 @@ object GraphPackSqliteContainer {
                 appendLine(
                     """
                     INSERT INTO entity_names (
-                        name_id, entity_id, display_text, first_reveal, name_kind, evidence_anchor_id
+                        name_id, entity_id, display_text, first_reveal, name_kind, evidence_anchor_id, reveal_char_end
                     ) VALUES (
                         ${sqlString(name.nameId.value)},
                         ${sqlString(name.entityId.value)},
                         ${sqlString(name.displayText)},
                         ${name.firstReveal},
                         ${sqlString(name.nameKind.name)},
-                        ${sqlNullableString(name.evidenceAnchorId?.value)}
+                        ${sqlNullableString(name.evidenceAnchorId?.value)},
+                        ${name.revealCharEnd ?: "NULL"}
                     );
                     """.trimIndent(),
                 )
@@ -1118,7 +1120,8 @@ object GraphPackSqliteContainer {
                         assertion_id, subject_id, predicate,
                         object_kind, object_entity_id, object_literal_value, object_literal_unit,
                         attribution_kind, attribution_speaker_id, attribution_context_anchor_id,
-                        first_reveal, evidence_anchor_id, epistemic_status, extraction_confidence
+                        first_reveal, evidence_anchor_id, epistemic_status, extraction_confidence,
+                        reveal_char_end
                     ) VALUES (
                         ${sqlString(assertion.assertionId.value)},
                         ${sqlString(assertion.subjectId.value)},
@@ -1133,7 +1136,8 @@ object GraphPackSqliteContainer {
                         ${assertion.firstReveal},
                         ${sqlString(assertion.evidenceAnchorId.value)},
                         ${sqlString(assertion.epistemicStatus.name)},
-                        ${assertion.extractionConfidence ?: "NULL"}
+                        ${assertion.extractionConfidence ?: "NULL"},
+                        ${assertion.revealCharEnd ?: "NULL"}
                     );
                     """.trimIndent(),
                 )
@@ -1153,14 +1157,15 @@ object GraphPackSqliteContainer {
                 appendLine(
                     """
                     INSERT INTO assertion_transitions (
-                        transition_id, assertion_id, reveal_ordinal, status, evidence_anchor_id, reason
+                        transition_id, assertion_id, reveal_ordinal, status, evidence_anchor_id, reason, reveal_char_end
                     ) VALUES (
                         ${sqlString(transition.transitionId.value)},
                         ${sqlString(transition.assertionId.value)},
                         ${transition.revealOrdinal},
                         ${sqlString(transition.status.name)},
                         ${sqlNullableString(transition.evidenceAnchorId?.value)},
-                        ${sqlNullableString(transition.reason)}
+                        ${sqlNullableString(transition.reason)},
+                        ${transition.revealCharEnd ?: "NULL"}
                     );
                     """.trimIndent(),
                 )
@@ -1170,14 +1175,18 @@ object GraphPackSqliteContainer {
                 appendLine(
                     """
                     INSERT INTO identity_links (
-                        link_id, left_entity_id, right_entity_id, kind, first_reveal, evidence_anchor_id
+                        link_id, left_entity_id, right_entity_id, kind, first_reveal, evidence_anchor_id,
+                        reveal_char_end, epistemic_status, frame_id
                     ) VALUES (
                         ${sqlString(link.linkId.value)},
                         ${sqlString(link.entityIds[0].value)},
                         ${sqlString(link.entityIds[1].value)},
                         ${sqlString(link.kind.name)},
                         ${link.firstReveal},
-                        ${sqlNullableString(link.evidenceAnchorId?.value)}
+                        ${sqlNullableString(link.evidenceAnchorId?.value)},
+                        ${link.revealCharEnd ?: "NULL"},
+                        ${sqlNullableString(link.epistemicStatus?.name)},
+                        ${sqlNullableString(link.frameId)}
                     );
                     """.trimIndent(),
                 )
@@ -1393,6 +1402,8 @@ internal data class EntityRow(
     val canonicalNameId: String? = null,
     @SerialName("notes")
     val notes: String? = null,
+    @SerialName("reveal_char_end")
+    val revealCharEnd: Int? = null,
 ) {
     fun toDomain(): Entity =
         Entity(
@@ -1401,6 +1412,7 @@ internal data class EntityRow(
             firstReveal = firstReveal,
             canonicalNameId = canonicalNameId?.let { NameId(it) },
             notes = notes,
+            revealCharEnd = revealCharEnd,
         )
 }
 
@@ -1418,6 +1430,8 @@ internal data class EntityNameRow(
     val nameKind: String,
     @SerialName("evidence_anchor_id")
     val evidenceAnchorId: String? = null,
+    @SerialName("reveal_char_end")
+    val revealCharEnd: Int? = null,
 ) {
     fun toDomain(): EntityName =
         EntityName(
@@ -1427,6 +1441,7 @@ internal data class EntityNameRow(
             firstReveal = firstReveal,
             nameKind = NameKind.valueOf(nameKind),
             evidenceAnchorId = evidenceAnchorId?.let { EvidenceAnchorId(it) },
+            revealCharEnd = revealCharEnd,
         )
 }
 
@@ -1571,6 +1586,8 @@ internal data class AssertionRow(
     val epistemicStatus: String,
     @SerialName("extraction_confidence")
     val extractionConfidence: Double? = null,
+    @SerialName("reveal_char_end")
+    val revealCharEnd: Int? = null,
 ) {
     fun toDomain(qualifiers: Map<String, String>): Assertion {
         val objectRef =
@@ -1612,6 +1629,7 @@ internal data class AssertionRow(
             evidenceAnchorId = EvidenceAnchorId(evidenceAnchorId),
             epistemicStatus = EpistemicStatus.valueOf(epistemicStatus),
             extractionConfidence = extractionConfidence,
+            revealCharEnd = revealCharEnd,
         )
     }
 }
@@ -1640,6 +1658,8 @@ internal data class AssertionTransitionRow(
     val evidenceAnchorId: String? = null,
     @SerialName("reason")
     val reason: String? = null,
+    @SerialName("reveal_char_end")
+    val revealCharEnd: Int? = null,
 ) {
     fun toDomain(): AssertionTransition =
         AssertionTransition(
@@ -1649,6 +1669,7 @@ internal data class AssertionTransitionRow(
             status = EpistemicStatus.valueOf(status),
             evidenceAnchorId = evidenceAnchorId?.let { EvidenceAnchorId(it) },
             reason = reason,
+            revealCharEnd = revealCharEnd,
         )
 }
 
@@ -1666,6 +1687,12 @@ internal data class IdentityLinkRow(
     val firstReveal: Int,
     @SerialName("evidence_anchor_id")
     val evidenceAnchorId: String? = null,
+    @SerialName("reveal_char_end")
+    val revealCharEnd: Int? = null,
+    @SerialName("epistemic_status")
+    val epistemicStatus: String? = null,
+    @SerialName("frame_id")
+    val frameId: String? = null,
 ) {
     fun toDomain(): IdentityLink =
         IdentityLink(
@@ -1674,6 +1701,9 @@ internal data class IdentityLinkRow(
             kind = IdentityLinkKind.valueOf(kind),
             firstReveal = firstReveal,
             evidenceAnchorId = evidenceAnchorId?.let { EvidenceAnchorId(it) },
+            revealCharEnd = revealCharEnd,
+            epistemicStatus = epistemicStatus?.let { EpistemicStatus.valueOf(it) },
+            frameId = frameId,
         )
 }
 
@@ -1722,7 +1752,8 @@ private const val GRAPH_PACK_DDL: String =
         entity_type TEXT NOT NULL,
         first_reveal INTEGER NOT NULL,
         canonical_name_id TEXT,
-        notes TEXT
+        notes TEXT,
+        reveal_char_end INTEGER
     );
     CREATE INDEX idx_entities_first_reveal ON entities(first_reveal);
     CREATE TABLE entity_names (
@@ -1731,7 +1762,8 @@ private const val GRAPH_PACK_DDL: String =
         display_text TEXT NOT NULL,
         first_reveal INTEGER NOT NULL,
         name_kind TEXT NOT NULL,
-        evidence_anchor_id TEXT
+        evidence_anchor_id TEXT,
+        reveal_char_end INTEGER
     );
     CREATE INDEX idx_entity_names_first_reveal ON entity_names(entity_id, first_reveal);
     CREATE TABLE evidence_anchors (
@@ -1786,7 +1818,8 @@ private const val GRAPH_PACK_DDL: String =
         first_reveal INTEGER NOT NULL,
         evidence_anchor_id TEXT NOT NULL,
         epistemic_status TEXT NOT NULL,
-        extraction_confidence REAL
+        extraction_confidence REAL,
+        reveal_char_end INTEGER
     );
     CREATE INDEX idx_assertions_first_reveal ON assertions(first_reveal);
     CREATE TABLE assertion_qualifiers (
@@ -1801,7 +1834,8 @@ private const val GRAPH_PACK_DDL: String =
         reveal_ordinal INTEGER NOT NULL,
         status TEXT NOT NULL,
         evidence_anchor_id TEXT,
-        reason TEXT
+        reason TEXT,
+        reveal_char_end INTEGER
     );
     CREATE INDEX idx_assertion_transitions_reveal_ordinal
         ON assertion_transitions(assertion_id, reveal_ordinal);
@@ -1811,7 +1845,10 @@ private const val GRAPH_PACK_DDL: String =
         right_entity_id TEXT NOT NULL REFERENCES entities(entity_id),
         kind TEXT NOT NULL,
         first_reveal INTEGER NOT NULL,
-        evidence_anchor_id TEXT
+        evidence_anchor_id TEXT,
+        reveal_char_end INTEGER,
+        epistemic_status TEXT,
+        frame_id TEXT
     );
     CREATE INDEX idx_identity_links_first_reveal ON identity_links(first_reveal);
     """

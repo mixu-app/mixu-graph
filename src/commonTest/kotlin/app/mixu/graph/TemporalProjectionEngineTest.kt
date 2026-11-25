@@ -291,4 +291,149 @@ class TemporalProjectionEngineTest {
             "10k-entity projection took ${elapsed}ms, which exceeds 1000ms threshold",
         )
     }
+
+    @Test
+    fun adr042_inv3_inv6_inv7_rightEndpointAliasIsolationAndConditionalDsu() {
+        val ePrimary = EntityId("entity:primary")
+        val eMasked = EntityId("entity:masked")
+        val nPrimary = NameId("name:primary:canonical")
+        val nPrimaryLateAlias = NameId("name:primary:late_alias")
+        val nMasked = NameId("name:masked:canonical")
+        val aMidWindow = AssertionId("assertion:mid_window")
+        val lHyp = LinkId("link:hyp")
+        val lConfirmed = LinkId("link:confirmed")
+
+        val pack =
+            GraphPack(
+                manifest = manifest,
+                entities =
+                    listOf(
+                        Entity(
+                            entityId = ePrimary,
+                            entityType = EntityType.PERSON,
+                            firstReveal = 1,
+                            canonicalNameId = nPrimary,
+                            revealCharEnd = 40,
+                        ),
+                        Entity(
+                            entityId = eMasked,
+                            entityType = EntityType.PERSON,
+                            firstReveal = 2,
+                            canonicalNameId = nMasked,
+                            revealCharEnd = 60,
+                        ),
+                    ),
+                names =
+                    listOf(
+                        EntityName(
+                            nameId = nPrimary,
+                            entityId = ePrimary,
+                            displayText = "Detective Chen",
+                            firstReveal = 1,
+                            nameKind = NameKind.CANONICAL,
+                            revealCharEnd = 40,
+                        ),
+                        EntityName(
+                            nameId = nMasked,
+                            entityId = eMasked,
+                            displayText = "Masked Visitor",
+                            firstReveal = 2,
+                            nameKind = NameKind.CANONICAL,
+                            revealCharEnd = 60,
+                        ),
+                        EntityName(
+                            nameId = nPrimaryLateAlias,
+                            entityId = ePrimary,
+                            displayText = "Crimson Phantom",
+                            firstReveal = 3,
+                            nameKind = NameKind.ALIAS,
+                            revealCharEnd = 120,
+                        ),
+                    ),
+                assertions =
+                    listOf(
+                        Assertion(
+                            assertionId = aMidWindow,
+                            subjectId = eMasked,
+                            predicate = "entered_study",
+                            objectRef = ObjectRef.Literal("library"),
+                            attribution = Attribution(kind = AttributionKind.OBSERVATION),
+                            firstReveal = 2,
+                            evidenceAnchorId = EvidenceAnchorId("anchor:2"),
+                            epistemicStatus = EpistemicStatus.OBSERVED,
+                            revealCharEnd = 100,
+                        ),
+                    ),
+                identityLinks =
+                    listOf(
+                        IdentityLink(
+                            linkId = lHyp,
+                            entityIds = listOf(ePrimary, eMasked),
+                            kind = IdentityLinkKind.CANDIDATE,
+                            firstReveal = 2,
+                            revealCharEnd = 150,
+                            epistemicStatus = EpistemicStatus.CLAIMED,
+                            frameId = "hyp:frame_a",
+                        ),
+                        IdentityLink(
+                            linkId = lConfirmed,
+                            entityIds = listOf(ePrimary, eMasked),
+                            kind = IdentityLinkKind.CONFIRMED,
+                            firstReveal = 3,
+                            revealCharEnd = 200,
+                            epistemicStatus = EpistemicStatus.OBSERVED,
+                        ),
+                    ),
+            )
+
+        val engine = TemporalProjectionEngine(pack)
+
+        // INV-7: Just 1 char before assertion revealCharEnd (100), assertion stays hidden
+        val v2BeforeAsr = engine.project(viewOrdinal = 2, viewCharOffset = 99)
+        assertTrue(v2BeforeAsr.assertions.isEmpty())
+        assertEquals(2, v2BeforeAsr.entities.size)
+
+        // At (2, 100): assertion unlocks, late alias at (3, 120) remains absent (INV-6)
+        val v2AtAsr = engine.project(viewOrdinal = 2, viewCharOffset = 100)
+        assertEquals(listOf(aMidWindow), v2AtAsr.assertions.map { it.assertion.assertionId })
+        assertTrue(v2AtAsr.identityLinks.isEmpty())
+
+        // INV-3: At (2, 150), CLAIMED + framed link stays hypothesized and UNCOLLAPSED
+        val v2WithHyp = engine.project(viewOrdinal = 2, viewCharOffset = 150)
+        assertEquals(1, v2WithHyp.hypothesizedIdentityLinks.size)
+        assertTrue(v2WithHyp.collapsibleIdentityLinks.isEmpty())
+        assertEquals(2, v2WithHyp.dsuClusters.size)
+        assertEquals(
+            eMasked,
+            v2WithHyp.entities.first { it.entity.entityId == eMasked }.resolvedEntityId,
+        )
+
+        // INV-6: At (3, 119) late alias stays hidden; at (3, 120) appears without mutating canonical name
+        val v3BeforeAlias = engine.project(viewOrdinal = 3, viewCharOffset = 119)
+        assertEquals(
+            1,
+            v3BeforeAlias.entities
+                .first { it.entity.entityId == ePrimary }
+                .allRevealedNames.size,
+        )
+        val v3AtAlias = engine.project(viewOrdinal = 3, viewCharOffset = 120)
+        val primaryAt3 = v3AtAlias.entities.first { it.entity.entityId == ePrimary }
+        assertEquals("Detective Chen", primaryAt3.canonicalName?.displayText)
+        assertEquals(2, primaryAt3.allRevealedNames.size)
+
+        // INV-3: At (3, 200) OBSERVED unframed link collapses both into 1 cluster rooted at earliest ePrimary
+        val v3Confirmed = engine.project(viewOrdinal = 3, viewCharOffset = 200)
+        assertEquals(1, v3Confirmed.collapsibleIdentityLinks.size)
+        assertEquals(1, v3Confirmed.dsuClusters.size)
+        assertEquals(
+            ePrimary,
+            v3Confirmed.entities
+                .first {
+                    it.entity.entityId == eMasked
+                }.resolvedEntityId,
+        )
+
+        // Seek-back idempotency
+        assertEquals(v2WithHyp, engine.project(viewOrdinal = 2, viewCharOffset = 150))
+    }
 }
