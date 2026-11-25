@@ -35,6 +35,8 @@ data class IdentityLink(
     val epistemicStatus: EpistemicStatus? = null,
     @SerialName("frame_id")
     val frameId: String? = null,
+    @SerialName("hypothesis_frame")
+    val hypothesisFrame: String? = null,
 ) : Comparable<IdentityLink> {
     init {
         require(entityIds.size == 2) { "entityIds must contain exactly two entities" }
@@ -46,14 +48,25 @@ data class IdentityLink(
         if (frameId != null) {
             require(frameId.isNotBlank()) { "frameId cannot be blank when provided" }
         }
+        if (hypothesisFrame != null) {
+            require(
+                hypothesisFrame.isNotBlank(),
+            ) { "hypothesisFrame cannot be blank when provided" }
+        }
     }
 
     /**
+     * Returns the scoping hypothesis frame identifier, preferring canonical [hypothesisFrame]
+     * with fallback to legacy [frameId].
+     */
+    fun effectiveHypothesisFrame(): String? = hypothesisFrame ?: frameId
+
+    /**
      * Returns true when this link is eligible to collapse DSU entity clusters (INV-3):
-     * unframed and OBSERVED (or omitted epistemic_status for v1 backward compatibility).
+     * unframed and OBSERVED (or omitted epistemic_status for v1 compatibility).
      */
     fun isCollapsible(): Boolean =
-        frameId == null &&
+        effectiveHypothesisFrame() == null &&
             (epistemicStatus == null || epistemicStatus == EpistemicStatus.OBSERVED)
 
     override fun compareTo(other: IdentityLink): Int = STABLE_COMPARATOR.compare(this, other)

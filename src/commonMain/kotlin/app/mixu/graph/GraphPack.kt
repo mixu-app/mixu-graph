@@ -85,6 +85,14 @@ data class GraphPackManifest(
     val provenance: Provenance? = null,
     @SerialName("counts")
     val counts: ManifestCounts? = null,
+    @SerialName("series_id")
+    val seriesId: String? = null,
+    @SerialName("part_index")
+    val partIndex: Int? = null,
+    @SerialName("total_parts")
+    val totalParts: Int? = null,
+    @SerialName("body_winnow_fingerprint")
+    val bodyWinnowFingerprint: String? = null,
 ) {
     init {
         require(graphSchemaVersion >= 1) { "graphSchemaVersion must be >= 1" }
@@ -94,6 +102,25 @@ data class GraphPackManifest(
         }
         require(graphVersion.matches(Regex("^[0-9]+\\.[0-9]+\\.[0-9]+$"))) {
             "graphVersion must be a semver string (e.g. 1.0.0)"
+        }
+        if (seriesId != null) {
+            require(seriesId.isNotBlank()) { "seriesId cannot be blank when provided" }
+        }
+        if (partIndex != null) {
+            require(partIndex >= 1) { "partIndex must be >= 1" }
+        }
+        if (totalParts != null) {
+            require(totalParts >= 1) { "totalParts must be >= 1" }
+        }
+        if (partIndex != null && totalParts != null) {
+            require(
+                partIndex <= totalParts,
+            ) { "partIndex ($partIndex) cannot exceed totalParts ($totalParts)" }
+        }
+        if (bodyWinnowFingerprint != null) {
+            require(bodyWinnowFingerprint.isNotBlank()) {
+                "bodyWinnowFingerprint cannot be blank when provided"
+            }
         }
     }
 }

@@ -14,6 +14,8 @@ enum class EntityType {
     LOCATION,
     ORGANIZATION,
     OBJECT,
+    TEXT_WORK,
+    MOTIF,
 }
 
 /**
